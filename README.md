@@ -69,5 +69,22 @@ export default defineConfig([
       // other options...
     },
   },
-])
+  ])
+```
+
+## Directory Structure
+
+```
+src
+  assets/            # Static assets
+  features/          # Domain-driven features
+    home/            # Home page (currently empty placeholder)
+    membership/      # Membership page + styles
+    mypage/          # My Page + styles
+  routes/            # Route-level pages (chat/subscribe)
+  shared/            # Shared, reusable modules
+    api/             # Axios API clients
+    components/      # Shared UI primitives
+    layout/          # App layout + header
+    styles/          # Global styles
 ```
