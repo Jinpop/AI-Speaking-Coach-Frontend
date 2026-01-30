@@ -20,7 +20,7 @@ export const HeaderInner = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px clamp(20px, 6vw, 80px);
+  padding: 10px clamp(16px, 4vw, 56px);
 `
 
 export const Brand = styled.span`
@@ -81,5 +81,5 @@ export const NavItem = styled(NavLink)`
 `
 
 export const Main = styled.main`
-  padding: 32px 0 80px;
+  padding: 12px 0 48px;
 `

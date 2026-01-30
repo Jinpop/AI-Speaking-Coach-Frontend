@@ -1,5 +1,6 @@
 import axios, { AxiosError } from "axios";
 import type { AxiosRequestConfig } from "axios";
+import { DEFAULT_USER_ID, STORAGE_KEYS } from "../../constants/storage";
 
 export type ApiErrorPayload = {
   error?: {
@@ -27,7 +28,7 @@ const client = axios.create({
 });
 
 client.interceptors.request.use((config) => {
-  const userId = localStorage.getItem("userId") ?? "2";
+  const userId = localStorage.getItem(STORAGE_KEYS.userId) ?? DEFAULT_USER_ID;
   const hasUserHeader =
     (config.headers as Record<string, string> | undefined)?.["X-USER-ID"] !==
     undefined;
