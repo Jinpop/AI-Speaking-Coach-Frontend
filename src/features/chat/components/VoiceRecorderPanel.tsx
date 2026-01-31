@@ -15,6 +15,7 @@ type Props = {
   isConnecting: boolean
   canSend: boolean
   isSending: boolean
+  showRetry: boolean
   onStart: () => void
   onStop: () => void
   onReset: () => void
@@ -33,6 +34,7 @@ export default function VoiceRecorderPanel({
   isConnecting,
   canSend,
   isSending,
+  showRetry,
   onStart,
   onStop,
   onReset,
@@ -77,7 +79,7 @@ export default function VoiceRecorderPanel({
         </S.MicWrap>
       </S.MicCenter>
       <S.Timer $recording={isRecording}>{formattedTimer}</S.Timer>
-      <S.VoiceHint>{displayHint}</S.VoiceHint>
+      {displayHint ? <S.VoiceHint>{displayHint}</S.VoiceHint> : null}
       {isRecording && (
         <S.LevelRow>
           {levels.map((height, index) => (
@@ -90,7 +92,9 @@ export default function VoiceRecorderPanel({
           <S.PrimaryButton onClick={onSend} disabled={!canSend || isSending}>
             {isSending ? '전송중...' : '보내기'}
           </S.PrimaryButton>
-          <S.SecondaryButton onClick={onReset}>다시 녹음하기</S.SecondaryButton>
+          {(showRetry || canSend) && (
+            <S.SecondaryButton onClick={onReset}>다시 녹음하기</S.SecondaryButton>
+          )}
         </S.ButtonRow>
       ) : null}
     </S.VoicePanel>

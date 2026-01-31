@@ -182,40 +182,72 @@
 
 ---
 
-### POST /api/chat/turn
+### POST /api/chat/stt
 
-- 설명: 단일 채팅 턴 처리. audio(음성) 업로드 → STT → LLM → TTS 실행 후 결과 반환.
+- 설명: 음성 파일을 STT로 전사하여 텍스트를 반환합니다.
 - 요청 헤더:
-- X-USER-ID: 2
-- Content-Type: multipart/form-data
+  - `X-USER-ID`: (integer) 사용자 ID
 - 요청 바디(multipart):
-- audio (required): 녹음 파일(Blob). React(MediaRecorder) 기준 `audio/webm;codecs=opus` 포맷을 사용합니다.
-- history (optional): JSON string
-
-- curl 예시
-
-```bash
-curl -X POST "http://localhost:3000/api/chat/turn" \
-  -H "X-USER-ID: 2" \
-  -H "Accept: application/json" \
-  -F "audio=@./sample.webm" \
-  -F 'history=[{"role":"user","content":"안녕"}]'
-```
-
+  - `audio` (required): 녹음 파일(Blob). React(MediaRecorder) 기준 `audio/webm;codecs=opus` 포맷 권장.
 - 응답(200):
 
 ```json
-{
-  "userText": "안녕, 오늘의 공부 플랜을 알려줘",
-  "aiText": "좋아! 오늘은 ...",
-  "aiAudioBase64": "SUQzBAAAAA..." // mp3 base64
-}
+{ "userText": "Introduce yourself in 3 sentences." }
 ```
 
 에러(400): 잘못된 요청 파라미터
 
 ```json
 { "errors": { "input_text": ["can't be blank"] } }
+```
+
+---
+
+### POST /api/chat/llm/stream
+
+- 설명: 영어 자기소개 코치 역할의 LLM 응답을 **스트리밍(SSE)** 으로 반환합니다.
+- 요청 헤더:
+  - `X-USER-ID`: (integer) 사용자 ID
+- 요청 바디(JSON):
+
+```json
+{
+  "text": "Please introduce yourself.",
+  "history": "[{\"role\":\"user\",\"content\":\"Hello\"}]"
+}
+```
+
+- 응답(200, SSE):
+  - `data: ...` 형태로 청크가 전송되며 마지막에 `data: [DONE]`
+
+에러(400): 영어가 아닌 입력
+
+```json
+{
+  "error": {
+    "code": "NON_ENGLISH_INPUT",
+    "message": "Please respond in English."
+  }
+}
+```
+
+---
+
+### POST /api/chat/tts
+
+- 설명: 텍스트를 TTS로 변환하여 mp3 base64를 반환합니다.
+- 요청 헤더:
+  - `X-USER-ID`: (integer) 사용자 ID
+- 요청 바디(JSON):
+
+```json
+{ "text": "Please respond in English." }
+```
+
+- 응답(200):
+
+```json
+{ "aiAudioBase64": "SUQzBAAAAA..." }
 ```
 
 ---
@@ -327,8 +359,8 @@ class ApplicationController < ActionController::API
   private
 
   def current_user
-    uid = request.headers["X-USER-ID"] || "2"
-    User.find(uid)
+    uid = request.headers["X-USER-ID"]
+    User.find_by(id: uid)
   end
 end
 ```
@@ -365,7 +397,7 @@ render json: {
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
     origins 'http://localhost:5173'
-    resource '/api/*', headers: %w[Content-Type X-USER-ID], methods: %i[get post patch put delete options]
+    resource '/api/*', headers: :any, methods: %i[get post patch put delete options]
   end
 end
 ```
@@ -376,7 +408,7 @@ end
     - none -> basic: 성공(201)
     - basic -> basic: 409(ALREADY_SUBSCRIBED)
     - basic -> premium: 성공(업그레이드, 201)
-  - chat 엔드포인트: `can_chat` 플래그에 따라 차단/허용
-  - X-USER-ID가 없으면 사용자 ID 2로 처리
+  - chat 엔드포인트: STT/LLM/TTS 분리 엔드포인트 동작 검증
+  - X-USER-ID가 없으면 404(USER_NOT_FOUND)
 
 위 테스트는 `X-USER-ID` 헤더를 사용해 각 사용자(시드된 데이터)를 지정하고 요청을 보낸 뒤 응답 코드를 확인하면 됩니다.

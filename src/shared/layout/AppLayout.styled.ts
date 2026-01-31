@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import styled from 'styled-components'
 
 export const Shell = styled.div`
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   background: #f7f5f2;
@@ -88,4 +88,5 @@ export const Main = styled.main`
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 `

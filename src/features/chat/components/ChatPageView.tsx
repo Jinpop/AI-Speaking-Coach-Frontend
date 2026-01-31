@@ -1,62 +1,68 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getMembershipStatus } from "../../../shared/api/membership";
-import { postChatTurn } from "../../../shared/api/chat";
+import { postChatSTT, postChatTTS, streamChatLLM } from "../../../shared/api/chat";
 import * as S from "../ChatPage.styled";
 import ChatHeader from "./ChatHeader";
 import ChatIntroMessage from "./ChatIntroMessage";
 import ChatMessageItem from "./ChatMessageItem";
 import VoiceRecorderPanel from "./VoiceRecorderPanel";
-import introTts from "../../../assets/intro_tts.mp3";
+import { useChatAudio } from "../hooks/useChatAudio";
+
+type Message = {
+  id: string;
+  role: "ai" | "user";
+  text: string;
+  audioUrl?: string | null;
+  isPending?: boolean;
+  isAudioLoading?: boolean;
+};
 
 export default function ChatPageView() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<"idle" | "recording" | "finished">(
-    "idle",
-  );
-  const [secondsLeft, setSecondsLeft] = useState(15);
-  const [levels, setLevels] = useState<number[]>(() =>
-    Array.from({ length: 14 }, () => 8),
-  );
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isAiPlaying, setIsAiPlaying] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedDuration, setRecordedDuration] = useState<number | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<
-    Array<{
-      id: string;
-      role: "ai" | "user";
-      text: string;
-      audioUrl?: string | null;
-    }>
-  >([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null);
-  const [playbackTime, setPlaybackTime] = useState(0);
-  const [playbackDuration, setPlaybackDuration] = useState(0);
-  const [recordError, setRecordError] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const aiAudioRef = useRef<HTMLAudioElement | null>(null);
-  const messageAudioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlsRef = useRef<Set<string>>(new Set());
-  const autoPlayRef = useRef(false);
 
-  const stopPlayback = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-    setIsPlaying(false);
-    setPlaybackTime(0);
-  }, []);
+  const messageAudioRef = useRef<HTMLAudioElement | null>(null);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+  const audioUrlsRef = useRef<Set<string>>(new Set());
+
+  const {
+    status,
+    isRecording,
+    isConnecting,
+    isAiPlaying,
+    isPlaying,
+    formattedTimer,
+    displayHint,
+    ring,
+    levels,
+    startRecording,
+    stopRecording,
+    resetRecording,
+    playRecording,
+    playAiIntro,
+  } = useChatAudio({
+    onRecordReady: (blob) => {
+      setRecordedBlob(blob);
+    },
+  });
+
+  const handleStartRecording = useCallback(() => {
+    setSendError(null);
+    startRecording();
+  }, [startRecording]);
+
+  const handleResetRecording = useCallback(() => {
+    setSendError(null);
+    setRecordedBlob(null);
+    setRecordedDuration(null);
+    resetRecording();
+  }, [resetRecording]);
 
   const stopMessagePlayback = useCallback(() => {
     if (messageAudioRef.current) {
@@ -65,185 +71,6 @@ export default function ChatPageView() {
     }
     setPlayingId(null);
   }, []);
-
-  const stopAiPlayback = useCallback(() => {
-    if (aiAudioRef.current) {
-      aiAudioRef.current.pause();
-      aiAudioRef.current.currentTime = 0;
-    }
-    setIsAiPlaying(false);
-  }, []);
-
-  const stopRecording = useCallback(() => {
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !== "inactive"
-    ) {
-      mediaRecorderRef.current.stop();
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    if (status !== "recording") return;
-    const timer = window.setTimeout(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          stopRecording();
-          setStatus("finished");
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => window.clearTimeout(timer);
-  }, [status, secondsLeft, stopRecording]);
-
-  useEffect(() => {
-    if (status !== "recording") return;
-    const tick = () => {
-      const analyser = analyserRef.current;
-      const dataArray = dataArrayRef.current;
-      if (!analyser || !dataArray) return;
-      analyser.getByteTimeDomainData(dataArray);
-      let sum = 0;
-      for (let i = 0; i < dataArray.length; i += 1) {
-        const value = (dataArray[i] - 128) / 128;
-        sum += value * value;
-      }
-      const rms = Math.sqrt(sum / dataArray.length);
-      const intensity = Math.min(1, rms * 6.5);
-      const min = 8;
-      const max = 48;
-      setLevels((prev) =>
-        prev.map((_, index) => {
-          const variance = 0.65 + (index % 4) * 0.12;
-          return Math.round(min + (max - min) * intensity * variance);
-        }),
-      );
-      rafRef.current = window.requestAnimationFrame(tick);
-    };
-    rafRef.current = window.requestAnimationFrame(tick);
-    return () => {
-      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    };
-  }, [status]);
-
-  const handleStart = useCallback(() => {
-    setRecordError(null);
-    setSendError(null);
-    stopAiPlayback();
-    stopPlayback();
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-      setAudioUrl(null);
-    }
-    setRecordedBlob(null);
-    if (isAiPlaying) {
-      return;
-    }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setRecordError("이 브라우저에서는 마이크 접근을 지원하지 않습니다.");
-      return;
-    }
-    if (typeof MediaRecorder === "undefined") {
-      setRecordError("이 브라우저에서는 녹음을 지원하지 않습니다.");
-      return;
-    }
-    setSecondsLeft(15);
-    setStatus("recording");
-    setIsConnecting(true);
-    navigator.mediaDevices
-      .getUserMedia({ audio: true })
-      .then((stream) => {
-        setIsConnecting(false);
-        mediaStreamRef.current = stream;
-        const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : undefined;
-        const mediaRecorder = new MediaRecorder(
-          stream,
-          mimeType ? { mimeType } : undefined,
-        );
-        mediaRecorderRef.current = mediaRecorder;
-        const chunks: BlobPart[] = [];
-
-        mediaRecorder.addEventListener("dataavailable", (event) => {
-          if (event.data.size > 0) chunks.push(event.data);
-        });
-        mediaRecorder.addEventListener("stop", () => {
-          const blob = new Blob(chunks, { type: "audio/webm" });
-          setAudioUrl(URL.createObjectURL(blob));
-          setRecordedBlob(blob);
-        });
-
-        const audioContext = new AudioContext();
-        audioContextRef.current = audioContext;
-        const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 512;
-        analyserRef.current = analyser;
-        source.connect(analyser);
-        dataArrayRef.current = new Uint8Array(
-          analyser.frequencyBinCount,
-        ) as Uint8Array<ArrayBuffer>;
-
-        mediaRecorder.start();
-      })
-      .catch(() => {
-        setRecordError("마이크 권한이 필요합니다.");
-        setIsConnecting(false);
-        setStatus("idle");
-      });
-  }, [audioUrl, isAiPlaying, stopAiPlayback, stopPlayback]);
-
-  const handleStop = useCallback(() => {
-    stopRecording();
-    setIsConnecting(false);
-    setStatus("finished");
-  }, [stopRecording]);
-
-  const handleReset = useCallback(() => {
-    setStatus("idle");
-    setSecondsLeft(15);
-    setLevels(Array.from({ length: 14 }, () => 8));
-    setRecordError(null);
-    setSendError(null);
-    setIsConnecting(false);
-    stopAiPlayback();
-    stopPlayback();
-    stopMessagePlayback();
-    setRecordedBlob(null);
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-    }
-    setAudioUrl(null);
-  }, [audioUrl, stopAiPlayback, stopMessagePlayback, stopPlayback]);
-
-  const handleAiPlay = useCallback(() => {
-    if (!aiAudioRef.current) {
-      aiAudioRef.current = new Audio(introTts);
-      aiAudioRef.current.addEventListener("ended", () => {
-        setIsAiPlaying(false);
-      });
-    }
-    if (isAiPlaying) {
-      stopAiPlayback();
-      return;
-    }
-    aiAudioRef.current
-      .play()
-      .then(() => setIsAiPlaying(true))
-      .catch(() => setIsAiPlaying(false));
-  }, [isAiPlaying, stopAiPlayback]);
 
   const handlePlayMessage = useCallback(
     (id: string, url: string) => {
@@ -265,144 +92,145 @@ export default function ChatPageView() {
     [playingId, stopMessagePlayback],
   );
 
-  const handlePlay = useCallback(() => {
-    if (!audioUrl) return;
-    if (isPlaying) {
-      stopPlayback();
-      return;
-    }
-    if (!audioRef.current) {
-      audioRef.current = new Audio(audioUrl);
-    }
-    audioRef.current
-      .play()
-      .then(() => setIsPlaying(true))
-      .catch(() => setIsPlaying(false));
-  }, [audioUrl, isPlaying, stopPlayback]);
-
-  useEffect(() => {
-    const audio = audioUrl ? new Audio(audioUrl) : null;
-    if (!audio) {
-      return;
-    }
-    audioRef.current = audio;
-    const handleLoaded = () => {
-      setPlaybackDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
-    };
-    const handleTime = () => {
-      setPlaybackTime(audio.currentTime);
-    };
-    const handleEnded = () => {
-      setIsPlaying(false);
-      setPlaybackTime(audio.duration || 0);
-    };
-    audio.addEventListener("loadedmetadata", handleLoaded);
-    audio.addEventListener("timeupdate", handleTime);
-    audio.addEventListener("ended", handleEnded);
-    return () => {
-      audio.removeEventListener("loadedmetadata", handleLoaded);
-      audio.removeEventListener("timeupdate", handleTime);
-      audio.removeEventListener("ended", handleEnded);
-    };
-  }, [audioUrl]);
-
   const handleSend = useCallback(async () => {
     if (!recordedBlob || isSending) return;
     setIsSending(true);
     setSendError(null);
     try {
+      if (recordedDuration !== null && recordedDuration < 1) {
+        setSendError("음성이 너무 짧아요. 다시 녹음해 주세요.");
+        return;
+      }
+      if (recordedBlob.size < 1024) {
+        setSendError("녹음이 너무 짧아 전송할 수 없어요. 다시 녹음해 주세요.");
+        return;
+      }
+      const { userText } = await postChatSTT(recordedBlob);
+      const hasKorean = /[가-힣]/.test(userText);
+      if (hasKorean) {
+        setSendError("영어로 말해주세요");
+        return;
+      }
       const userAudioUrl = URL.createObjectURL(recordedBlob);
       audioUrlsRef.current.add(userAudioUrl);
       const baseId = Date.now().toString();
       const userId = `${baseId}-user`;
       const aiId = `${baseId}-ai`;
       const history = messages.map((message) => ({
-        role: message.role,
+        role: message.role === "ai" ? "assistant" : "user",
         content: message.text,
       }));
-      const response = await postChatTurn(recordedBlob, history);
-      let aiAudioUrl: string | null = null;
-      if (response.aiAudioBase64) {
-        const base64Payload = response.aiAudioBase64.includes(",")
-          ? response.aiAudioBase64
-          : `data:audio/mpeg;base64,${response.aiAudioBase64}`;
-        aiAudioUrl = base64Payload;
-      }
-      if (aiAudioUrl) audioUrlsRef.current.add(aiAudioUrl);
+
       setMessages((prev) => [
         ...prev,
-        {
-          id: userId,
-          role: "user",
-          text: response.userText,
-          audioUrl: userAudioUrl,
-        },
-        { id: aiId, role: "ai", text: response.aiText, audioUrl: aiAudioUrl },
+        { id: userId, role: "user", text: userText, audioUrl: userAudioUrl },
+        { id: aiId, role: "ai", text: "", isPending: true, isAudioLoading: false },
       ]);
-      if (aiAudioUrl) {
-        window.setTimeout(() => {
-          handlePlayMessage(aiId, aiAudioUrl);
-        }, 0);
+
+      const stream = await streamChatLLM(userText, history);
+      const reader = stream.getReader();
+      let buffer = "";
+      let aiText = "";
+      let ttsKey: string | null = null;
+      let doneStreaming = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += value;
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+        for (const event of events) {
+          const lines = event.split("\n");
+          const dataLines = lines.filter((line) => line.startsWith("data:"));
+          if (!dataLines.length) continue;
+          const data = dataLines.map((line) => line.replace(/^data:\s*/, "")).join("\n");
+          if (data === "[DONE]") {
+            doneStreaming = true;
+            break;
+          }
+          let payload: { type?: string; text?: string; ttsKey?: string } | null = null;
+          try {
+            payload = JSON.parse(data);
+          } catch {
+            payload = null;
+          }
+
+          if (payload?.type === "meta" && payload.ttsKey) {
+            ttsKey = payload.ttsKey;
+            continue;
+          }
+          if (payload?.type === "chunk" && payload.text) {
+            aiText += payload.text;
+          } else if (payload?.type === "done") {
+            doneStreaming = true;
+          } else if (!payload) {
+            aiText += data;
+          }
+
+          if (aiText) {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === aiId ? { ...msg, text: aiText, isPending: false } : msg,
+              ),
+            );
+          }
+        }
+        if (doneStreaming) break;
       }
-      handleReset();
+
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === aiId ? { ...msg, isAudioLoading: true } : msg,
+        ),
+      );
+
+      const { aiAudioBase64 } = await postChatTTS(aiText);
+      const aiAudioUrl = aiAudioBase64.includes(",")
+        ? aiAudioBase64
+        : `data:audio/mpeg;base64,${aiAudioBase64}`;
+      audioUrlsRef.current.add(aiAudioUrl);
+
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === aiId
+            ? { ...msg, audioUrl: aiAudioUrl, isPending: false, isAudioLoading: false }
+            : msg,
+        ),
+      );
+
+      window.setTimeout(() => {
+        handlePlayMessage(aiId, aiAudioUrl);
+      }, 0);
+
+      handleResetRecording();
     } catch (error) {
-      if (error instanceof Error) {
-        setSendError(error.message);
+      const raw = error instanceof Error ? error.message : "";
+      const isNonEnglish =
+        raw.includes("NON_ENGLISH_INPUT") ||
+        raw.toLowerCase().includes("non_english") ||
+        raw.toLowerCase().includes("respond in english");
+      if (isNonEnglish) {
+        setSendError("영어로 말해주세요");
       } else {
-        setSendError("채팅 전송에 실패했습니다.");
+        setSendError("음성 전송에 실패했어요. 다시 녹음 후 보내주세요.");
       }
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id.endsWith("-ai") ? { ...msg, isAudioLoading: false } : msg,
+        ),
+      );
     } finally {
       setIsSending(false);
     }
-  }, [handlePlayMessage, handleReset, isSending, messages, recordedBlob]);
-
-  const isRecording = status === "recording";
-  const formatTime = useCallback((value: number) => {
-    const clamped = Math.max(0, Math.floor(value));
-    const minutes = Math.floor(clamped / 60);
-    const seconds = clamped % 60;
-    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }, []);
-
-  const formattedTimer = useMemo(() => {
-    if (status === "finished") {
-      return `${formatTime(playbackTime)} / ${formatTime(playbackDuration)}`;
-    }
-    return `00:${String(status === "recording" ? secondsLeft : 15).padStart(2, "0")}`;
-  }, [formatTime, playbackDuration, playbackTime, secondsLeft, status]);
-
-  const displayHint = useMemo(() => {
-    if (status === "finished") {
-      return sendError ?? recordError ?? "";
-    }
-    return recordError ?? "";
-  }, [recordError, sendError, status]);
-
-  const ring = useMemo(() => {
-    const radius = 44;
-    const circumference = 2 * Math.PI * radius;
-    const progress =
-      status === "recording"
-        ? secondsLeft / 15
-        : playbackDuration > 0
-          ? playbackTime / playbackDuration
-          : 0;
-    return {
-      radius,
-      circumference,
-      offset: circumference * (1 - progress),
-    };
-  }, [playbackDuration, playbackTime, secondsLeft, status]);
-
-  useEffect(() => {
-    return () => {
-      stopRecording();
-      stopPlayback();
-      stopAiPlayback();
-      stopMessagePlayback();
-      audioUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [stopAiPlayback, stopMessagePlayback, stopPlayback, stopRecording]);
+  }, [
+    handlePlayMessage,
+    handleResetRecording,
+    isSending,
+    messages,
+    recordedBlob,
+    recordedDuration,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -425,34 +253,73 @@ export default function ChatPageView() {
   }, [navigate]);
 
   useEffect(() => {
-    if (autoPlayRef.current) return;
-    const onFirstGesture = () => {
-      if (autoPlayRef.current) return;
-      autoPlayRef.current = true;
-      handleAiPlay();
-      window.removeEventListener("pointerdown", onFirstGesture);
-      window.removeEventListener("keydown", onFirstGesture);
+    if (!recordedBlob) {
+      setRecordedDuration(null);
+      return;
+    }
+    let active = true;
+    const previewUrl = URL.createObjectURL(recordedBlob);
+    const previewAudio = new Audio(previewUrl);
+    const handleLoaded = () => {
+      if (!active) return;
+      const duration = Number.isFinite(previewAudio.duration)
+        ? previewAudio.duration
+        : null;
+      setRecordedDuration(duration);
+      URL.revokeObjectURL(previewUrl);
     };
-    window.addEventListener("pointerdown", onFirstGesture, { once: true });
-    window.addEventListener("keydown", onFirstGesture, { once: true });
+    const handleError = () => {
+      if (!active) return;
+      setRecordedDuration(null);
+      URL.revokeObjectURL(previewUrl);
+    };
+    previewAudio.addEventListener("loadedmetadata", handleLoaded);
+    previewAudio.addEventListener("error", handleError);
     return () => {
-      window.removeEventListener("pointerdown", onFirstGesture);
-      window.removeEventListener("keydown", onFirstGesture);
+      active = false;
+      previewAudio.removeEventListener("loadedmetadata", handleLoaded);
+      previewAudio.removeEventListener("error", handleError);
+      URL.revokeObjectURL(previewUrl);
     };
-  }, [handleAiPlay]);
+  }, [recordedBlob]);
+
+  useEffect(() => {
+    return () => {
+      stopMessagePlayback();
+      audioUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [stopMessagePlayback]);
+
+  useEffect(() => {
+    const container = messagesRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+    observer.observe(container);
+    container.scrollTop = container.scrollHeight;
+    return () => observer.disconnect();
+  }, []);
+
+  const micDisabled =
+    isAiPlaying || isPlaying || isConnecting || Boolean(playingId);
+  const hint = status === "finished" ? (sendError ?? "") : displayHint;
+  const showRetry = Boolean(sendError);
 
   return (
     <S.Page>
       <ChatHeader />
       <S.ChatCard>
-        <S.Messages>
-          <ChatIntroMessage isPlaying={isAiPlaying} onPlay={handleAiPlay} />
+        <S.Messages ref={messagesRef}>
+          <ChatIntroMessage isPlaying={isAiPlaying} onPlay={playAiIntro} />
           {messages.map((message) => (
             <ChatMessageItem
               key={message.id}
               role={message.role}
               text={message.text}
               audioUrl={message.audioUrl}
+              isPending={message.isPending}
+              isAudioLoading={message.isAudioLoading}
               isPlaying={playingId === message.id}
               onPlay={
                 message.audioUrl
@@ -462,22 +329,26 @@ export default function ChatPageView() {
             />
           ))}
         </S.Messages>
+        <S.FooterNote>
+          입력은 UI 틀만 구성되어 있어요. 이후 연동 시 활성화됩니다.
+        </S.FooterNote>
         <VoiceRecorderPanel
           isRecording={isRecording}
-          micDisabled={isAiPlaying || isPlaying || isConnecting}
+          micDisabled={micDisabled}
           isConnecting={isConnecting}
           formattedTimer={formattedTimer}
-          displayHint={displayHint}
+          displayHint={hint}
           ring={ring}
           levels={levels}
           status={status}
-          onStart={handleStart}
-          onStop={handleStop}
-          onReset={handleReset}
-          onPlay={handlePlay}
+          onStart={handleStartRecording}
+          onStop={stopRecording}
+          onReset={handleResetRecording}
+          onPlay={playRecording}
           onSend={handleSend}
           canSend={Boolean(recordedBlob)}
           isSending={isSending}
+          showRetry={showRetry}
         />
       </S.ChatCard>
     </S.Page>

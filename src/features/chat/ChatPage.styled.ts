@@ -8,6 +8,8 @@ export const Page = styled.main`
   flex-direction: column;
   gap: 16px;
   background: #f7f5f2;
+  flex: 1;
+  overflow: hidden;
 `;
 
 export const Header = styled.div`
@@ -52,6 +54,8 @@ export const ChatCard = styled.section`
   display: flex;
   flex-direction: column;
   flex: 1;
+  height: 100%;
+  max-height: 100%;
   min-height: 0;
 `;
 
@@ -95,6 +99,43 @@ export const Bubble = styled.div<{ $role: "ai" | "user" }>`
   color: ${({ $role }) => ($role === "user" ? "#ffffff" : "#0f172a")};
   border: ${({ $role }) =>
     $role === "user" ? "none" : "1px solid rgba(148, 163, 184, 0.24)"};
+  display: flex;
+  flex-direction: column;
+`;
+
+export const TypingDots = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #94a3b8;
+    animation: typingPulse 1s infinite ease-in-out;
+  }
+
+  span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes typingPulse {
+    0%,
+    80%,
+    100% {
+      transform: scale(0.75);
+      opacity: 0.5;
+    }
+    40% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
 `;
 
 export const AudioRow = styled.div`
@@ -102,6 +143,35 @@ export const AudioRow = styled.div`
   align-items: center;
   gap: 8px;
   margin-top: 10px;
+`;
+
+export const LoadingRow = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+`;
+
+export const LoadingIcon = styled.span`
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.4);
+  border-top-color: #64748b;
+  display: inline-block;
+  animation: spin 0.9s linear infinite;
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 `;
 
 export const AudioButton = styled.button<{ $playing?: boolean }>`
@@ -169,8 +239,16 @@ export const VoiceTitle = styled.span`
 `;
 
 export const VoiceHint = styled.span`
-  font-size: 12px;
-  color: #64748b;
+  font-size: 16px;
+  color: #b91c1c;
+  text-align: center;
+  width: fit-content;
+  font-weight: 700;
+  margin: 0 auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #fee2e2;
+  border: 1px solid rgba(185, 28, 28, 0.18);
 
   a {
     color: #2563eb;
