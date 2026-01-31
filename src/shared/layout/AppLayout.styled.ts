@@ -3,6 +3,8 @@ import styled from 'styled-components'
 
 export const Shell = styled.div`
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: #f7f5f2;
   color: #1d1d1f;
 `
@@ -82,4 +84,8 @@ export const NavItem = styled(NavLink)`
 
 export const Main = styled.main`
   padding: 12px 0 48px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 `

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../../shared/api/client'
 import { getMe } from '../../../shared/api/me'
 import { getMembershipPlans } from '../../../shared/api/plans'
@@ -12,6 +13,7 @@ type Plan = Awaited<ReturnType<typeof getMembershipPlans>>['plans'][number]
 type MembershipStatus = Awaited<ReturnType<typeof getMembershipStatusForUser>>
 
 export default function AdminPageView() {
+  const navigate = useNavigate()
   const userId = useUserStore((state) => state.userId)
   const [me, setMe] = useState<Awaited<ReturnType<typeof getMe>> | null>(null)
   const [users, setUsers] = useState<User[]>([])
@@ -57,6 +59,12 @@ export default function AdminPageView() {
       active = false
     }
   }, [userId])
+
+  useEffect(() => {
+    if (me && !me.admin) {
+      navigate('/404', { replace: true })
+    }
+  }, [me, navigate])
 
   useEffect(() => {
     let active = true
