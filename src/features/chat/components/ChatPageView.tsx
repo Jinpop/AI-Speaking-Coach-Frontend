@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getMembershipStatus } from "../../../shared/api/membership";
 import { postChatSTT, postChatTTS, streamChatLLM } from "../../../shared/api/chat";
@@ -30,6 +30,13 @@ export default function ChatPageView() {
   const messageAudioRef = useRef<HTMLAudioElement | null>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const audioUrlsRef = useRef<Set<string>>(new Set());
+  const autoScrollRef = useRef(true);
+
+  const scrollToBottom = useCallback(() => {
+    const container = messagesRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, []);
 
   const {
     status,
@@ -290,15 +297,19 @@ export default function ChatPageView() {
     };
   }, [stopMessagePlayback]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!autoScrollRef.current) return;
+    const id = window.requestAnimationFrame(scrollToBottom);
+    return () => window.cancelAnimationFrame(id);
+  }, [messages, scrollToBottom]);
+
+  const handleMessagesScroll = useCallback(() => {
     const container = messagesRef.current;
-    if (!container || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      container.scrollTop = container.scrollHeight;
-    });
-    observer.observe(container);
-    container.scrollTop = container.scrollHeight;
-    return () => observer.disconnect();
+    if (!container) return;
+    const threshold = 24;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    autoScrollRef.current = distanceFromBottom <= threshold;
   }, []);
 
   const micDisabled =
@@ -310,7 +321,7 @@ export default function ChatPageView() {
     <S.Page>
       <ChatHeader />
       <S.ChatCard>
-        <S.Messages ref={messagesRef}>
+        <S.Messages ref={messagesRef} onScroll={handleMessagesScroll}>
           <ChatIntroMessage isPlaying={isAiPlaying} onPlay={playAiIntro} />
           {messages.map((message) => (
             <ChatMessageItem
