@@ -17,7 +17,7 @@ yarn dev
 
 환경 변수
 
-- 백엔드 서버를 먼저 실행한 뒤 `.env`에 `VITE_API_BASE_URL`을 설정합니다.
+- 백엔드 서버를 먼저 실행한 뒤 `.env`에 `VITE_API_BASE_URL`, `OPENAI_API_KEY`을 설정합니다.
 - 로컬 백엔드 사용 시 예: `VITE_API_BASE_URL=http://localhost:3000`
 
 ## 설계 및 기술 스택 선정 배경
