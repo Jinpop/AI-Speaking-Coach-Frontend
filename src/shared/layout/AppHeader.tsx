@@ -74,7 +74,7 @@ export default function AppHeader() {
   return (
     <S.Header>
       <S.HeaderInner>
-        <S.Brand>Ringle</S.Brand>
+        <S.Brand>SpeakFlow</S.Brand>
         <S.HeaderControls>
           {isAdmin && <S.AdminButton to="/admin">Manage</S.AdminButton>}
           <S.UserSelect

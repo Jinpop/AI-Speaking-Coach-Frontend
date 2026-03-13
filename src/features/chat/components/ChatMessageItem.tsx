@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as S from '../ChatPage.styled'
+import { CHAT_AUDIO } from '../constants'
 
 type Props = {
   role: 'ai' | 'user'
@@ -20,23 +21,19 @@ export default function ChatMessageItem({
   isPending,
   isAudioLoading,
 }: Props) {
-  const [visibleText, setVisibleText] = useState(text)
+  const [visibleText, setVisibleText] = useState('')
   const revealTimerRef = useRef<number | null>(null)
   const revealedCountRef = useRef(0)
 
   useEffect(() => {
-    if (role !== 'ai') {
-      setVisibleText(text)
-      return
-    }
+    if (role !== 'ai') return
     const words = text.trim().split(/\s+/).filter(Boolean)
     if (words.length === 0) {
-      setVisibleText('')
       revealedCountRef.current = 0
+      window.setTimeout(() => setVisibleText(''), 0)
       return
     }
     if (words.length <= revealedCountRef.current) {
-      setVisibleText(text)
       return
     }
 
@@ -50,11 +47,12 @@ export default function ChatMessageItem({
       revealedCountRef.current = nextCount
       setVisibleText(words.slice(0, nextCount).join(' '))
       if (nextCount < words.length) {
-        revealTimerRef.current = window.setTimeout(step, 80)
+        revealTimerRef.current = window.setTimeout(step, CHAT_AUDIO.revealWordDelayMs)
       }
     }
 
-    step()
+    // setState가 effect 본문에서 "동기적으로" 호출되는 것을 피하기 위해 다음 tick에서 시작
+    revealTimerRef.current = window.setTimeout(step, 0)
 
     return () => {
       if (revealTimerRef.current) {
@@ -63,6 +61,8 @@ export default function ChatMessageItem({
       }
     }
   }, [role, text])
+
+  const messageText = role === 'ai' ? visibleText : text
 
   return (
     <S.MessageRow $role={role}>
@@ -75,7 +75,7 @@ export default function ChatMessageItem({
             <span />
           </S.TypingDots>
         ) : (
-          visibleText
+          messageText
         )}
         {role === 'ai' && isAudioLoading && (
           <S.LoadingRow aria-live="polite">

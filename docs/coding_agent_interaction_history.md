@@ -1,6 +1,6 @@
-# Coding Agent Interaction History (Ringle Frontend)
+# Coding Agent Interaction History (Frontend Project)
 
-본 문서는 과제 수행 과정에서 코딩 에이전트(Codex, Copilot)를 **실무 방식으로 활용**한 기록입니다.
+본 문서는 프로젝트 수행 과정에서 코딩 에이전트(Codex, Copilot)를 **실무 방식으로 활용**한 기록입니다.
 
 - 요구사항 해석 → 설계 → 구현 → 검증까지의 흐름을 투명하게 남겼습니다.
 - **툴 입력 방식**, **검토/수정/검증 방법**를 포함합니다.

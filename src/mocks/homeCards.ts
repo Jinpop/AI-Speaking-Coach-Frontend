@@ -16,7 +16,7 @@ export const HOME_CARDS: HomeCard[] = [
   {
     category: '#AI 튜터',
     title: 'AI 튜터가 만드는 몰입 루틴',
-    description: '레벨 진단부터 과제 추천까지, 지금의 실력을 기준으로 설계합니다.',
+    description: '레벨 진단부터 학습 추천까지, 지금의 실력을 기준으로 설계합니다.',
     meta: '3 min read · Intermediate',
     image: cardImage,
     href: '/chat',
